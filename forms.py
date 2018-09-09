@@ -1,7 +1,6 @@
 from flask_wtf import FlaskForm
-
 from models import Client 
-from wtforms import (StringField, PasswordField)
+from wtforms import (StringField, PasswordField, TextAreaField)
 from wtforms.validators import (DataRequired, ValidationError, Email, Regexp, Length, EqualTo)
 
 #Un validador personalizado para verificar si el usuario ya existe antes de inscribirlo.
@@ -53,6 +52,9 @@ class RegisterForm(FlaskForm):
 			DataRequired()]
 	)
 
-class LoginForm(Form):
+class LoginForm(FlaskForm):
 	email = StringField('Email', validators=[DataRequired(), Email()])
 	password = PasswordField('Password', validators=[DataRequired()])
+
+class PostForm(FlaskForm):
+	content = TextAreaField('Que piensas?', validators = [DataRequired()])

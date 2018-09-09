@@ -1,7 +1,8 @@
 #g es un elemento global para almacenar todo lo que se quiera de la aplicación y será accesible en todos lados
 #render_template para renderizar una template de html, flash para desplegar un mensaje despues de la siguiente peticion, url_for para generar una url a un endpoint, redirect para redireccionar a un usuario
 from flask import (Flask, g, render_template, render_template, flash, url_for, redirect)
-from flask_login import LoginManager
+from flask_bcrypt import check_password_hash
+from flask_login import LoginManager, login_user, login_required, current_user, logout_user
 import forms
 
 import models 
@@ -47,6 +48,7 @@ def before_request():
 	#Si la conexión con la BD está cerrada, se vuelve a abrir.
 	if g.db.is_closed():
 		g.db.connect()
+		g.user = current_user
 
 @app.after_request
 #Luego de la peticion se tendra una respuesta. en el 90% de ocasiones
@@ -71,6 +73,43 @@ def register():
 		return redirect(url_for('index'))
 	#Renderizar el template de reigstro, si no esta registrado aún 
 	return render_template('register.html', form = form)
+
+@app.route("/login", methods = ['GET', 'POST'])
+def login():
+	form = forms.LoginForm()
+	if form.validate_on_submit():
+		try:
+			client = models.Client.get(models.Client.email == form.email.data)
+		except	models.DoesNotExist:
+			flash('Tu nombre de usuario o contraseña no existen', 'error')
+		else:
+			if check_password_hash(client.password, form.password.data):
+				login_user(client)
+				flash('Has iniciado sesión', 'success')
+				return redirect(url_for('index'))
+	return render_template('login.html', form = form) 
+
+@app.route('/logout')
+#login_required = permite que solo se ejecute la vista solo si el usuario ya está logueado.
+@login_required
+def logout():
+	logout_user()
+	flash('Has salido de tu sesión :(', 'success')
+	return redirect(url_for('index'))
+
+@app.route("/new_post", methods = ['GET', 'POST'])
+def post():
+	form = forms.PostForm()
+	if form.validate_on_submit():
+		models.Post.create(
+			#_get_current_object() = entrega el usuario actual de la sesión.
+			user = g.user._get_current_object(), 
+			content = form.content.data.strip()
+		)
+		flash('Mensaje posteado! :D', 'success')
+		return redirect(url_for('index'))
+	return render_template('post.html', form = form)
+
 
 @app.route('/')
 def index():
