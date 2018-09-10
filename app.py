@@ -1,8 +1,8 @@
 #g es un elemento global para almacenar todo lo que se quiera de la aplicación y será accesible en todos lados
 #render_template para renderizar una template de html, flash para desplegar un mensaje despues de la siguiente peticion, url_for para generar una url a un endpoint o función, redirect para redireccionar a un usuario
-from flask import (Flask, g, render_template, render_template, flash, url_for, redirect)
+from flask import (Flask, g, render_template, render_template, flash, url_for, redirect, abort)
 from flask_bcrypt import check_password_hash
-from flask_login import LoginManager, login_user, login_required, current_user, logout_user
+from flask_login import (LoginManager, login_user, login_required, current_user, logout_user, AnonymousUserMixin)
 import forms
 
 import models 
@@ -16,11 +16,17 @@ app = Flask(__name__)
 #Si la llave es puesta, los componentes criptográficos van a utilizarlo para crear cookies y otras cosas. Los inicios de seśión se manejan con cookies que  son guardas en los navegadores utilizados por los usuarios
 app.secret_key = 'lkjflkdDLK!?FJ0D-_92231,-.29SDLK123sad,.-..'
 
+class Anonymous(AnonymousUserMixin):
+	def __init__(self):
+		self.username = 'Invitado'
+
 login_manager = LoginManager()
 #LoginManager para manejar las sesiones en la aplicación 'app'
 login_manager.init_app(app)
 #Decir cuál va a ser la vista llamada y desplegada al usuario cuando se quiera iniciar sesión cuando sean redirigidos
 login_manager.login_view = 'login'
+login_manager.anonymous_user = Anonymous
+
 
 #Para que sea una función de la misma clase de login_manager
 @login_manager.user_loader
@@ -57,13 +63,20 @@ def after_request(response):
 	g.db.close()
 	return response
 
+@app.route('/post/<int:post_id>')
+def view_post(post_id):
+	posts = models.Post.select().where(models.Post.id == post_id)
+	if posts.exists() == False:
+		abort(404)
+	return render_template('stream.html', stream = posts)
+
 @app.route('/follow/<username>')
 @login_required
 def follow(username):
 	try:
 		to_user = models.Client.get(models.Client.username**username)
 	except models.DoesNotExist:
-		pass
+		abort(404)
 	else:
 		try:
 			models.Relationship.create(
@@ -160,9 +173,13 @@ def stream(username=None):
 	template = 'stream.html'
 	#Si el username existe y si el username es diferente al usuario actual
 	if username and username != current_user.username:
-		#Seleccionar de la db todo del cliente que tenga un nombre parecido (**) al username de parámetro. .Get() solo limitar a 1 entrada
-		user = models.Client.select().where(models.Client.username**username).get()
-		stream = user.posts.limit(100)
+		try:
+			#Seleccionar de la db todo del cliente que tenga un nombre parecido (**) al username de parámetro. .Get() solo limitar a 1 entrada
+			user = models.Client.select().where(models.Client.username**username).get()
+		except models.DoesNotExist:
+			abort(404)
+		else:
+			stream = user.posts.limit(100)
 	else:
 		#Sino los posts serán el usuari actual y el username será del usuario actual.
 		stream = current_user.get_stream().limit(100)
@@ -170,6 +187,11 @@ def stream(username=None):
 	if username:
 		template = 'user_stream.html'
 	return render_template(template, stream = stream, user = user)
+
+@app.errorhandler(404)
+def not_found(error):
+	return render_template('404.html'), 404
+
 
 if __name__ == '__main__':
 	models.initialize()

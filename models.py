@@ -27,9 +27,13 @@ class Client(UserMixin, BaseModel):
 	#devolver todos los posts de este usuario, es un metodo de instancia porque se neceista saber los posts de UN USUARIO EN PARTICULAR
 	def get_posts(self):
 		return Post.select().where(Post.user == self)
-	#devolver todos los posts de este usuario, es un metodo de instancia porque se neceista saber los posts de UN USUARIO EN PARTICULAR
+	#devolver todos los posts de usuarios que  este usuario sigue, es un metodo de instancia porque se neceista saber los posts de UN USUARIO EN PARTICULAR
 	def get_stream(self):
-		return Post.select().where(Post.user == self)
+		return Post.select().where(
+			#Donde mi usuario se encuentre dentro.
+			(Post.user << self.get_following()) |
+			(Post.user == self)
+		)
 
 	def get_following(self):
 		"""Los usuarios que estamos siguiendo"""
@@ -84,8 +88,10 @@ class Post(BaseModel):
 
 class Relationship(BaseModel):
 	#del usuario: usuarios a los que yo sigo
+	#mi usuario
 	from_user = ForeignKeyField(Client, related_name = 'relationship')
 	#al usuario: usuarios a los que me siguen
+	#a quien sigo
 	to_user = ForeignKeyField(Client, related_name = 'related_to')
 
 	class Meta:
