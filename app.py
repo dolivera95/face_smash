@@ -1,5 +1,5 @@
 #g es un elemento global para almacenar todo lo que se quiera de la aplicación y será accesible en todos lados
-#render_template para renderizar una template de html, flash para desplegar un mensaje despues de la siguiente peticion, url_for para generar una url a un endpoint, redirect para redireccionar a un usuario
+#render_template para renderizar una template de html, flash para desplegar un mensaje despues de la siguiente peticion, url_for para generar una url a un endpoint o función, redirect para redireccionar a un usuario
 from flask import (Flask, g, render_template, render_template, flash, url_for, redirect)
 from flask_bcrypt import check_password_hash
 from flask_login import LoginManager, login_user, login_required, current_user, logout_user
@@ -57,6 +57,45 @@ def after_request(response):
 	g.db.close()
 	return response
 
+@app.route('/follow/<username>')
+@login_required
+def follow(username):
+	try:
+		to_user = models.Client.get(models.Client.username**username)
+	except models.DoesNotExist:
+		pass
+	else:
+		try:
+			models.Relationship.create(
+				from_user = g.user._get_current_object(),
+				to_user = to_user
+			)
+		except models.IntegrityError:
+			pass
+		else:
+			flash('Ahora sigues a {}'.format(to_user.username), 'success')
+	return redirect(url_for('stream', username = to_user.username))
+
+@app.route('/unfollow/<username>')
+@login_required
+def unfollow(username):
+	try:
+		#Buscar el registro de la persona que ya no queremos seguir
+		to_user = models.Client.get(models.Client.username**username)
+	except models.DoesNotExist:
+		pass
+	else:
+		try:
+			models.Relationship.get(
+				from_user = g.user._get_current_object(),
+				to_user = to_user
+			).delete_instance()
+		except models.IntegrityError:
+			pass
+		else:
+			flash('Has dejado de seguir a {}'.format(to_user.username), 'success')
+	return redirect(url_for('stream', username = to_user.username))
+
 @app.route('/register', methods = ['GET','POST'])
 def register():
 	form = forms.RegisterForm()
@@ -110,16 +149,36 @@ def post():
 		return redirect(url_for('index'))
 	return render_template('post.html', form = form)
 
-
 @app.route('/')
 def index():
-	return 'Hey'
+	stream = models.Post.select().limit(100)
+	return render_template('stream.html', stream = stream)
+
+@app.route('/stream')
+@app.route('/stream/<username>')
+def stream(username=None):
+	template = 'stream.html'
+	#Si el username existe y si el username es diferente al usuario actual
+	if username and username != current_user.username:
+		#Seleccionar de la db todo del cliente que tenga un nombre parecido (**) al username de parámetro. .Get() solo limitar a 1 entrada
+		user = models.Client.select().where(models.Client.username**username).get()
+		stream = user.posts.limit(100)
+	else:
+		#Sino los posts serán el usuari actual y el username será del usuario actual.
+		stream = current_user.get_stream().limit(100)
+		user = current_user
+	if username:
+		template = 'user_stream.html'
+	return render_template(template, stream = stream, user = user)
 
 if __name__ == '__main__':
 	models.initialize()
-	models.Client.create_user(
-		username = 'dolivera',
-		email = 'dolivera95@gmail.com',
-		password = 'dolivera95',
-	)
+	try:	
+		models.Client.create_user(
+			username = 'dolivera',
+			email = 'dolivera95@gmail.com',
+			password = 'dolivera95',
+		)
+	except ValueError:
+		pass
 	app.run(debug = DEBUG, host = HOST, port = PORT)
